@@ -1,9 +1,11 @@
+HEAD
 
 # Quick Start
-在本地单机上部署一套3实例的集群，执行如下脚本：<br>
+
+在本地单机上部署一套 3 实例的集群，执行如下脚本：<br>
 cd distribute-java-cluster && sh deploy.sh <br>
-该脚本会在distribute-java-cluster/env目录部署三个实例example1、example2、example3；<br>
-同时会创建一个client目录，用于测试raft集群读写功能。<br>
+该脚本会在 distribute-java-cluster/env 目录部署三个实例 example1、example2、example3；<br>
+同时会创建一个 client 目录，用于测试 raft 集群读写功能。<br>
 部署成功后，测试写操作，通过如下脚本：
 cd env/client <br>
 ./bin/run_client.sh "list://127.0.0.1:8051,127.0.0.1:8052,127.0.0.1:8053" hello world <br>
@@ -13,6 +15,7 @@ cd env/client <br>
 # 使用方法
 
 ## 定义数据写入和读取接口
+
 ```protobuf
 message SetRequest {
     string key = 1;
@@ -28,6 +31,7 @@ message GetResponse {
     string value = 1;
 }
 ```
+
 ```java
 public interface ExampleService {
     Example.SetResponse set(Example.SetRequest request);
@@ -36,7 +40,9 @@ public interface ExampleService {
 ```
 
 ## 服务端使用方法
-1. 实现状态机StateMachine接口实现类
+
+1. 实现状态机 StateMachine 接口实现类
+
 ```java
 // 该接口三个方法主要是给Raft内部调用
 public interface StateMachine {
@@ -59,11 +65,13 @@ public interface StateMachine {
 ```
 
 2. 实现数据写入和读取接口
+
 ```
 // ExampleService实现类中需要包含以下成员
 private RaftNode raftNode;
 private ExampleStateMachine stateMachine;
 ```
+
 ```
 // 数据写入主要逻辑
 byte[] data = request.toByteArray();
@@ -71,12 +79,14 @@ byte[] data = request.toByteArray();
 boolean success = raftNode.replicate(data, Raft.EntryType.ENTRY_TYPE_DATA);
 Example.SetResponse response = Example.SetResponse.newBuilder().setSuccess(success).build();
 ```
+
 ```
 // 数据读取主要逻辑，由具体应用状态机实现
 Example.GetResponse response = stateMachine.get(request);
 ```
 
 3. 服务端启动逻辑
+
 ```
 // 初始化RPCServer
 RPCServer server = new RPCServer(localServer.getEndPoint().getPort());
@@ -101,3 +111,9 @@ server.registerService(exampleService);
 server.start();
 raftNode.init();
 ```
+
+# Distributed Key-Value Storage System
+
+**Brief Description:**
+This is a distributed key-value storage system with high availability and consistency, ensuring the system remains stable and reliable whilst handling large volumes of data.
+3cfdd57430b9cd7e75b6de87f123f3c120cfe910
