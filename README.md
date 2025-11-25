@@ -1,4 +1,3 @@
-HEAD
 
 # Quick Start
 
@@ -116,4 +115,4 @@ raftNode.init();
 
 **Brief Description:**
 This is a distributed key-value storage system with high availability and consistency, ensuring the system remains stable and reliable whilst handling large volumes of data.
-3cfdd57430b9cd7e75b6de87f123f3c120cfe910
+
