@@ -1,118 +1,69 @@
-
-# Quick Start
-
-在本地单机上部署一套 3 实例的集群，执行如下脚本：<br>
-cd distribute-java-cluster && sh deploy.sh <br>
-该脚本会在 distribute-java-cluster/env 目录部署三个实例 example1、example2、example3；<br>
-同时会创建一个 client 目录，用于测试 raft 集群读写功能。<br>
-部署成功后，测试写操作，通过如下脚本：
-cd env/client <br>
-./bin/run_client.sh "list://127.0.0.1:8051,127.0.0.1:8052,127.0.0.1:8053" hello world <br>
-测试读操作命令：<br>
-./bin/run_client.sh "list://127.0.0.1:8051,127.0.0.1:8052,127.0.0.1:8053" hello
-
-# 使用方法
-
-## 定义数据写入和读取接口
-
-```protobuf
-message SetRequest {
-    string key = 1;
-    string value = 2;
-}
-message SetResponse {
-    bool success = 1;
-}
-message GetRequest {
-    string key = 1;
-}
-message GetResponse {
-    string value = 1;
-}
-```
-
-```java
-public interface ExampleService {
-    Example.SetResponse set(Example.SetRequest request);
-    Example.GetResponse get(Example.GetRequest request);
-}
-```
-
-## 服务端使用方法
-
-1. 实现状态机 StateMachine 接口实现类
-
-```java
-// 该接口三个方法主要是给Raft内部调用
-public interface StateMachine {
-    /**
-     * 对状态机中数据进行snapshot，每个节点本地定时调用
-     * @param snapshotDir snapshot数据输出目录
-     */
-    void writeSnap(String snapshotDir);
-    /**
-     * 读取snapshot到状态机，节点启动时调用
-     * @param snapshotDir snapshot数据目录
-     */
-    void readSnap(String snapshotDir);
-    /**
-     * 将数据应用到状态机
-     * @param dataBytes 数据二进制
-     */
-    void applyData(byte[] dataBytes);
-}
-```
-
-2. 实现数据写入和读取接口
-
-```
-// ExampleService实现类中需要包含以下成员
-private RaftNode raftNode;
-private ExampleStateMachine stateMachine;
-```
-
-```
-// 数据写入主要逻辑
-byte[] data = request.toByteArray();
-// 数据同步写入raft集群
-boolean success = raftNode.replicate(data, Raft.EntryType.ENTRY_TYPE_DATA);
-Example.SetResponse response = Example.SetResponse.newBuilder().setSuccess(success).build();
-```
-
-```
-// 数据读取主要逻辑，由具体应用状态机实现
-Example.GetResponse response = stateMachine.get(request);
-```
-
-3. 服务端启动逻辑
-
-```
-// 初始化RPCServer
-RPCServer server = new RPCServer(localServer.getEndPoint().getPort());
-// 应用状态机
-ExampleStateMachine stateMachine = new ExampleStateMachine();
-// 设置Raft选项，比如：
-RaftOptions.snapshotMinLogSize = 10 * 1024;
-RaftOptions.snapshotPeriodSeconds = 30;
-RaftOptions.maxSegmentFileSize = 1024 * 1024;
-// 初始化RaftNode
-RaftNode raftNode = new RaftNode(serverList, localServer, stateMachine);
-// 注册Raft节点之间相互调用的服务
-RaftConsensusService raftConsensusService = new RaftConsensusServiceImpl(raftNode);
-server.registerService(raftConsensusService);
-// 注册给Client调用的Raft服务
-RaftClientService raftClientService = new RaftClientServiceImpl(raftNode);
-server.registerService(raftClientService);
-// 注册应用自己提供的服务
-ExampleService exampleService = new ExampleServiceImpl(raftNode, stateMachine);
-server.registerService(exampleService);
-// 启动RPCServer，初始化Raft节点
-server.start();
-raftNode.init();
-```
-
 # Distributed Key-Value Storage System
 
-**Brief Description:**
-This is a distributed key-value storage system with high availability and consistency, ensuring the system remains stable and reliable whilst handling large volumes of data.
+### 1\. Brief Description
+A high-availability, strongly consistent Key-Value storage system built on the Raft Consensus Algorithm to ensure data reliability and fault tolerance across a cluster of nodes.
 
+| Feature | Description |
+| :--- | :--- |
+| **Consistency** | **Strong (Linearizable) Consistency** for writes, guaranteed by Raft's log replication. |
+| **Availability** | Fault-tolerant operation; the system remains operational as long as a **majority** of nodes are active. |
+| **Technology** | Implemented in **Java** and uses a custom **RPC layer** for inter-node communication. |
+
+-----
+
+### 2\. System Architecture
+
+The project is structured into three main modules, providing a clear **separation of concerns** between consensus and storage:
+
+#### 1\. `distribute-java-core` (The Consensus Engine) ⚙️
+
+  * **Role:** Implements the core **Raft consensus logic**. It manages leader election, log replication, heartbeat mechanisms, and log safety checks.
+  * **Key Component:** The **`RaftNode`** object, which handles the distributed log and cluster state (Leader/Follower/Candidate).
+
+#### 2\. `distribute-java-cluster` (The Server Runtime) 🖥️
+
+  * **Role:** Contains the main application entry points and deployment scripts. It initializes and runs the system.
+  * **Key Components:** The **`RPCServer`** which handles both internal Raft communication (`RaftConsensusService`) and external client requests (`ExampleService`).
+
+#### 3\. `ExampleStateMachine` (The Application Storage Layer) 💾
+
+  * **Role:** This is the actual Key-Value store. It only accepts state-changing updates from the Raft Consensus Engine after they have been **committed** to the distributed log.
+  * **Key Methods:** `applyData(byte[] dataBytes)` for committed writes, and methods for **Snapshotting** (`writeSnap`, `readSnap`) to manage log growth.
+
+-----
+
+### 3\. Quick Start (Local 3-Node Cluster)
+
+You can quickly deploy a local 3-instance cluster for testing:
+
+1.  **Deploy Cluster:**
+
+    ```bash
+    cd distribute-java-cluster
+    sh deploy.sh
+    ```
+
+    This deploys three instances to the `distribute-java-cluster/env` directory, listening on ports **8051, 8052, and 8053**.
+
+2.  **Test Write (SET):**
+
+    ```bash
+    cd env/client
+    ./bin/run_client.sh "list://127.0.0.1:8051,127.0.0.1:8052,127.0.0.1:8053" mykey myvalue
+    ```
+
+3.  **Test Read (GET):**
+
+    ```bash
+    ./bin/run_client.sh "list://127.0.0.1:8051,127.0.0.0:8052,127.0.0.1:8053" mykey
+    ```
+
+-----
+
+### 4\. Data Flow and Consistency
+
+All state-changing operations are processed through the Raft Leader to guarantee strong consistency:
+
+1.  **Client Request:** Sent to the cluster. If received by a Follower, it is **redirected** to the Leader.
+2.  **Log Entry:** The Leader appends the operation to its Raft Log and initiates **replication** to all Followers.
+3.  **Commit & Apply:** Once a **majority** of nodes have replicated the entry, it is marked **Committed**, and only then is it applied to the `ExampleStateMachine` on all nodes.
